@@ -1,163 +1,139 @@
-
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import { 
+  Search, 
+  Plus, 
+  Filter, 
+  MoreHorizontal, 
+  Image as ImageIcon,
+  Clock,
+  CheckCircle2,
+  AlertCircle
+} from 'lucide-react';
 import { supabase } from '../supabase';
-import { Ticket, Profile } from '../types';
-import { Search, Filter, Plus, ChevronRight, MoreHorizontal } from 'lucide-react';
 
-interface TicketListProps {
-  profile: Profile | null;
-}
-
-const TicketList: React.FC<TicketListProps> = ({ profile }) => {
-  const [tickets, setTickets] = useState<Ticket[]>([]);
+export default function TicketList() {
+  const navigate = useNavigate();
+  const [tickets, setTickets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
     fetchTickets();
-  }, [profile]);
+  }, []);
 
-  const fetchTickets = async () => {
+  async function fetchTickets() {
     try {
       setLoading(true);
-      let query = supabase
+      // Busca chamados e traz o nome do cliente associado
+      const { data, error } = await supabase
         .from('tickets')
-        .select('*, client:clients(name), technician:profiles(full_name)')
-        .order('opened_at', { ascending: false });
+        .select('*, clients(name)')
+        .order('created_at', { ascending: false });
 
-      if (profile?.role === 'cliente' || profile?.role === 'fiscal') {
-        query = query.eq('client_id', profile.client_id);
-      }
-
-      const { data, error } = await query;
       if (error) throw error;
-      setTickets(data as any[]);
-    } catch (err) {
-      console.error(err);
+      setTickets(data || []);
+    } catch (error: any) {
+      console.error('Erro ao buscar chamados:', error.message);
     } finally {
       setLoading(false);
     }
+  }
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'open': return 'bg-blue-500/10 text-blue-500';
+      case 'in_progress': return 'bg-yellow-500/10 text-yellow-500';
+      case 'completed': return 'bg-green-500/10 text-green-500';
+      default: return 'bg-zinc-500/10 text-zinc-500';
+    }
   };
 
-  const getStatusBadge = (status: string) => {
-    const styles: Record<string, string> = {
-      aberto: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
-      em_atendimento: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
-      aguardando: 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20',
-      finalizado: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
-      cancelado: 'bg-red-500/10 text-red-400 border-red-500/20',
-    };
-    return (
-      <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${styles[status] || styles.aguardando}`}>
-        {status.replace('_', ' ')}
-      </span>
-    );
+  const getPriorityColor = (priority: string) => {
+    switch (priority) {
+      case 'Crítica': return 'text-red-500';
+      case 'Alta': return 'text-orange-500';
+      case 'Normal': return 'text-blue-500';
+      default: return 'text-zinc-500';
+    }
   };
 
-  const getPriorityBadge = (priority: string) => {
-    const styles: Record<string, string> = {
-      critica: 'text-red-500',
-      alta: 'text-orange-500',
-      normal: 'text-blue-500',
-      baixa: 'text-zinc-500',
-    };
-    return (
-      <span className={`font-medium ${styles[priority]}`}>
-        {priority}
-      </span>
-    );
-  };
+  const filteredTickets = tickets.filter(t => 
+    t.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    t.clients?.name?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 text-left">
         <div>
-          <h1 className="text-2xl font-bold">Gerenciamento de Chamados</h1>
+          <h1 className="text-2xl font-bold text-white">Gerenciamento de Chamados</h1>
           <p className="text-zinc-500 text-sm">Acompanhe todos os atendimentos técnicos em aberto e finalizados.</p>
         </div>
-        <Link 
-          to="/chamados/novo"
-          className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded-lg text-sm font-bold flex items-center transition-all"
+        <button 
+          onClick={() => navigate('/chamados/novo')}
+          className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-bold transition-all"
         >
-          <Plus className="w-4 h-4 mr-2" />
-          Novo Chamado
-        </Link>
+          <Plus className="w-4 h-4" /> Novo Chamado
+        </button>
       </div>
 
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
-        <div className="p-4 border-b border-zinc-800 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-zinc-900/50">
-          <div className="relative w-full md:w-96">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-            <input 
-              type="text" 
-              placeholder="Pesquisar por número ou título..." 
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-            />
-          </div>
-          <div className="flex items-center space-x-2">
-            <button className="flex items-center space-x-2 px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm font-medium hover:bg-zinc-700 transition-colors">
-              <Filter className="w-4 h-4" />
-              <span>Filtros</span>
-            </button>
-          </div>
+      <div className="flex flex-col md:flex-row gap-4">
+        <div className="flex-1 relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+          <input 
+            type="text"
+            placeholder="Pesquisar por número ou título..."
+            className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-10 pr-4 py-2 text-white outline-none focus:border-blue-500"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
         </div>
+        <button className="flex items-center gap-2 px-4 py-2 bg-zinc-900 border border-zinc-800 text-zinc-400 rounded-lg hover:text-white">
+          <Filter className="w-4 h-4" /> Filtros
+        </button>
+      </div>
 
+      <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
-            <thead>
-              <tr className="border-b border-zinc-800 bg-zinc-900/30">
-                <th className="px-6 py-4 text-[10px] uppercase font-bold text-zinc-500 tracking-widest">ID</th>
-                <th className="px-6 py-4 text-[10px] uppercase font-bold text-zinc-500 tracking-widest">Título / Descrição</th>
-                <th className="px-6 py-4 text-[10px] uppercase font-bold text-zinc-500 tracking-widest">Cliente</th>
-                <th className="px-6 py-4 text-[10px] uppercase font-bold text-zinc-500 tracking-widest">Status</th>
-                <th className="px-6 py-4 text-[10px] uppercase font-bold text-zinc-500 tracking-widest">Prioridade</th>
-                <th className="px-6 py-4 text-[10px] uppercase font-bold text-zinc-500 tracking-widest">Data</th>
-                <th className="px-6 py-4"></th>
+            <thead className="bg-zinc-950 text-zinc-500 text-[10px] uppercase font-bold tracking-wider">
+              <tr>
+                <th className="px-6 py-4">ID</th>
+                <th className="px-6 py-4">Título / Descrição</th>
+                <th className="px-6 py-4">Cliente</th>
+                <th className="px-6 py-4">Status</th>
+                <th className="px-6 py-4">Prioridade</th>
+                <th className="px-6 py-4 text-right">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800">
               {loading ? (
-                <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-zinc-500">Carregando chamados...</td>
-                </tr>
-              ) : tickets.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-zinc-500">Nenhum chamado encontrado.</td>
-                </tr>
+                <tr><td colSpan={6} className="px-6 py-10 text-center text-zinc-500">Carregando chamados...</td></tr>
+              ) : filteredTickets.length === 0 ? (
+                <tr><td colSpan={6} className="px-6 py-10 text-center text-zinc-500">Nenhum chamado encontrado.</td></tr>
               ) : (
-                tickets.map((ticket) => (
-                  <tr key={ticket.id} className="hover:bg-zinc-800/30 transition-colors group">
+                filteredTickets.map((ticket) => (
+                  <tr key={ticket.id} className="hover:bg-zinc-800/30 transition-colors cursor-pointer" onClick={() => navigate(`/chamados/${ticket.id}`)}>
+                    <td className="px-6 py-4 text-xs font-mono text-zinc-500">#{ticket.id.slice(0, 5)}</td>
                     <td className="px-6 py-4">
-                      <span className="text-zinc-400 font-mono text-xs">#{ticket.number}</span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex flex-col max-w-xs md:max-w-md lg:max-w-lg">
-                        <span className="text-sm font-bold text-zinc-100 truncate group-hover:text-blue-400 transition-colors">{ticket.title}</span>
-                        <span className="text-xs text-zinc-500 truncate">{ticket.description || 'Sem descrição'}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-white">{ticket.title}</span>
+                        {ticket.image_url && <ImageIcon className="w-3 h-3 text-blue-500" title="Possui anexo" />}
                       </div>
+                      <div className="text-xs text-zinc-500 truncate max-w-[200px]">{ticket.description || 'Sem descrição'}</div>
                     </td>
-                    <td className="px-6 py-4 text-sm text-zinc-300">
-                      {ticket.client?.name || 'Interno'}
-                    </td>
+                    <td className="px-6 py-4 text-sm text-zinc-300">{ticket.clients?.name || 'Cliente removido'}</td>
                     <td className="px-6 py-4">
-                      {getStatusBadge(ticket.status)}
+                      <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${getStatusColor(ticket.status)}`}>
+                        {ticket.status === 'open' ? 'Aberto' : ticket.status === 'in_progress' ? 'Em Atend.' : 'Finalizado'}
+                      </span>
                     </td>
-                    <td className="px-6 py-4 text-xs">
-                      {getPriorityBadge(ticket.priority)}
-                    </td>
-                    <td className="px-6 py-4 text-xs text-zinc-500 whitespace-nowrap">
-                      {new Date(ticket.opened_at).toLocaleDateString('pt-BR')}
+                    <td className={`px-6 py-4 text-xs font-bold ${getPriorityColor(ticket.priority)}`}>
+                      {ticket.priority}
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <Link 
-                        to={`/chamados/${ticket.id}`}
-                        className="p-2 hover:bg-zinc-700 rounded-lg inline-flex items-center justify-center transition-colors text-zinc-400 hover:text-white"
-                      >
-                        <ChevronRight className="w-5 h-5" />
-                      </Link>
+                      <button className="text-zinc-500 hover:text-white"><MoreHorizontal className="w-5 h-5" /></button>
                     </td>
                   </tr>
                 ))
@@ -165,17 +141,7 @@ const TicketList: React.FC<TicketListProps> = ({ profile }) => {
             </tbody>
           </table>
         </div>
-        
-        <div className="p-4 bg-zinc-900/50 border-t border-zinc-800 flex items-center justify-between text-xs text-zinc-500">
-          <span>Exibindo {tickets.length} resultados</span>
-          <div className="flex space-x-1">
-            <button className="px-3 py-1 bg-zinc-800 rounded disabled:opacity-50" disabled>Anterior</button>
-            <button className="px-3 py-1 bg-zinc-800 rounded disabled:opacity-50" disabled>Próximo</button>
-          </div>
-        </div>
       </div>
     </div>
   );
-};
-
-export default TicketList;
+}
