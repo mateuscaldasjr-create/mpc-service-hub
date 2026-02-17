@@ -42,12 +42,10 @@ export default function UserList() {
     }
   }
 
-  // FUNÇÃO PARA ADICIONAR USUÁRIO
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
     setActionLoading(true);
     try {
-      // 1. Cria o usuário no Auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: newUser.email,
         password: newUser.password,
@@ -56,8 +54,6 @@ export default function UserList() {
 
       if (authError) throw authError;
 
-      // 2. O Profile é criado automaticamente pela nossa Trigger do banco, 
-      // então apenas atualizamos o cargo e vínculo se necessário
       if (authData.user) {
         const { error: profileError } = await supabase
           .from('profiles')
@@ -70,11 +66,35 @@ export default function UserList() {
         if (profileError) throw profileError;
       }
 
-      alert('Usuário criado! Ele receberá um e-mail de confirmação.');
+      alert('Usuário criado com sucesso!');
       setIsAddModalOpen(false);
       fetchData();
     } catch (err: any) {
-      alert('Erro ao criar: ' + err.message);
+      alert('Erro ao criar usuário: ' + err.message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleUpdateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedUser) return;
+    setActionLoading(true);
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ 
+          role: selectedUser.role,
+          client_id: selectedUser.role === 'cliente' ? selectedUser.client_id : null
+        })
+        .eq('id', selectedUser.id);
+
+      if (error) throw error;
+      setIsEditModalOpen(false);
+      fetchData();
+      alert('Acesso atualizado!');
+    } catch (err: any) {
+      alert('Erro ao atualizar: ' + err.message);
     } finally {
       setActionLoading(false);
     }
@@ -87,7 +107,6 @@ export default function UserList() {
 
   return (
     <div className="space-y-6 text-left pb-10">
-      {/* Header com Azul MPC */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-2xl font-black text-white uppercase tracking-tighter">Gestão de Acessos</h1>
@@ -101,10 +120,9 @@ export default function UserList() {
         </button>
       </div>
 
-      {/* Lista de Usuários */}
       <div className="bg-zinc-900/40 border border-zinc-800/50 rounded-3xl overflow-hidden shadow-2xl">
         <div className="p-6 border-b border-zinc-800/50">
-          <div className="relative max-w-md">
+          <div className="relative max-w-md text-left">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
             <input 
               type="text" placeholder="Buscar por nome ou e-mail..." 
@@ -118,9 +136,9 @@ export default function UserList() {
           <table className="w-full">
             <thead>
               <tr className="text-[10px] font-black text-zinc-500 uppercase tracking-widest border-b border-zinc-800/50">
-                <th className="px-6 py-4">Usuário</th>
-                <th className="px-6 py-4">Nível</th>
-                <th className="px-6 py-4">Empresa</th>
+                <th className="px-6 py-4 text-left">Usuário</th>
+                <th className="px-6 py-4 text-left">Nível</th>
+                <th className="px-6 py-4 text-left">Empresa</th>
                 <th className="px-6 py-4 text-right">Ação</th>
               </tr>
             </thead>
@@ -128,14 +146,14 @@ export default function UserList() {
               {loading ? (
                 <tr><td colSpan={4} className="py-20 text-center text-zinc-500 font-bold uppercase text-xs animate-pulse">Sincronizando...</td></tr>
               ) : filteredUsers.map(u => (
-                <tr key={u.id} className="hover:bg-zinc-800/20 transition-colors group">
+                <tr key={u.id} className="hover:bg-zinc-800/20 transition-colors group text-left">
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 bg-zinc-800 rounded-full flex items-center justify-center border border-zinc-700 group-hover:border-blue-500/50 transition-colors">
                         <User className="w-5 h-5 text-zinc-500" />
                       </div>
                       <div>
-                        <p className="text-sm font-bold text-white">{u.full_name || 'Novo Usuário'}</p>
+                        <p className="text-sm font-bold text-white">{u.full_name || 'Usuário'}</p>
                         <p className="text-[10px] text-zinc-500 font-mono">{u.email}</p>
                       </div>
                     </div>
@@ -165,16 +183,6 @@ export default function UserList() {
         </div>
       </div>
 
-      {/* MODAL ADICIONAR (AZUL MPC) */}
+      {/* MODAL ADICIONAR */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-50 p-4 text-left">
-          <div className="bg-zinc-950 border border-zinc-800 rounded-3xl w-full max-w-md p-8 shadow-2xl relative overflow-hidden">
-            <div className="absolute top-0 left-0 right-0 h-1 bg-blue-600" />
-            <div className="flex justify-between items-center mb-8">
-              <h2 className="text-xl font-black text-white uppercase tracking-tight">Novo Acesso</h2>
-              <button onClick={() => setIsAddModalOpen(false)} className="text-zinc-600 hover:text-white"><X /></button>
-            </div>
-
-            <form onSubmit={handleAddUser} className="space-y-4">
-              <div className="space-y-1">
-                <label className="text-[10px
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-sm
