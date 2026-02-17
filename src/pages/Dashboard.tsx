@@ -1,170 +1,118 @@
-
 import React, { useState, useEffect } from 'react';
-import { 
-  Ticket, 
-  Clock, 
-  CheckCircle2, 
-  AlertCircle,
-  TrendingUp,
-  History
-} from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { ClipboardList, AlertCircle, Clock, CheckCircle2, History } from 'lucide-react';
 import { supabase } from '../supabase';
-import { Profile } from '../types';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
-interface DashboardProps {
-  profile: Profile | null;
-}
-
-const Dashboard: React.FC<DashboardProps> = ({ profile }) => {
-  const [stats, setStats] = useState({
-    total: 0,
-    open: 0,
-    ongoing: 0,
-    completed: 0
-  });
+export default function Dashboard() {
+  const navigate = useNavigate();
+  const [stats, setStats] = useState({ total: 0, open: 0, progress: 0, closed: 0 });
   const [recentTickets, setRecentTickets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchStats();
-  }, [profile]);
+    async function loadDashboardData() {
+      try {
+        const { data: tickets } = await supabase
+          .from('tickets')
+          .select('*')
+          .order('created_at', { ascending: false });
 
-  const fetchStats = async () => {
-    try {
-      setLoading(true);
-      
-      let query = supabase.from('tickets').select('*', { count: 'exact' });
-      
-      if (profile?.role === 'cliente' || profile?.role === 'fiscal') {
-        query = query.eq('client_id', profile.client_id);
+        if (tickets) {
+          setStats({
+            total: tickets.length,
+            open: tickets.filter(t => t.status === 'open').length,
+            progress: tickets.filter(t => t.status === 'in_progress').length,
+            closed: tickets.filter(t => t.status === 'completed').length,
+          });
+          setRecentTickets(tickets.slice(0, 5));
+        }
+      } finally {
+        setLoading(false);
       }
-
-      const { data, count, error } = await query;
-      if (error) throw error;
-
-      const tickets = data || [];
-      setStats({
-        total: count || 0,
-        open: tickets.filter(t => t.status === 'aberto').length,
-        ongoing: tickets.filter(t => t.status === 'em_atendimento' || t.status === 'aguardando').length,
-        completed: tickets.filter(t => t.status === 'finalizado').length
-      });
-
-      setRecentTickets(tickets.slice(0, 5));
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
     }
+    loadDashboardData();
+  }, []);
+
+  // FUNÇÃO PARA CONSERTAR A DATA
+  const formatDate = (dateString: string) => {
+    if (!dateString) return 'Data não disponível';
+    const date = new Date(dateString);
+    return isNaN(date.getTime()) 
+      ? 'Data inválida' 
+      : new Intl.DateTimeFormat('pt-BR', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        }).format(date);
   };
 
-  const chartData = [
-    { name: 'Abertos', value: stats.open, color: '#3b82f6' },
-    { name: 'Em Atend.', value: stats.ongoing, color: '#f59e0b' },
-    { name: 'Finalizados', value: stats.completed, color: '#10b981' }
+  const statCards = [
+    { label: 'Total de Chamados', value: stats.total, icon: ClipboardList, color: 'zinc', trend: '+12% desde ontem' },
+    { label: 'Em Aberto', value: stats.open, icon: AlertCircle, color: 'blue', trend: '+12% desde ontem' },
+    { label: 'Em Andamento', value: stats.progress, icon: Clock, color: 'yellow', trend: '+12% desde ontem' },
+    { label: 'Finalizados', value: stats.closed, icon: CheckCircle2, color: 'green', trend: '+12% desde ontem' },
   ];
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">Olá, {profile?.full_name?.split(' ')[0]}</h1>
-          <p className="text-zinc-500">Bem-vindo ao MPC Service Hub. Aqui está o resumo operacional de hoje.</p>
+    <div className="space-y-8">
+      <div className="flex justify-between items-center">
+        <div className="text-left">
+          <h1 className="text-2xl font-bold text-white">Olá,</h1>
+          <p className="text-zinc-500 text-sm">Bem-vindo ao MPC Service Hub. Aqui está o resumo operacional de hoje.</p>
         </div>
-        <div className="flex space-x-2">
-          <button className="bg-zinc-800 hover:bg-zinc-700 text-zinc-100 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
-            Baixar Relatório
-          </button>
-          <button className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
-            Novo Chamado
-          </button>
+        <div className="flex gap-3">
+          <button className="px-4 py-2 bg-zinc-900 text-zinc-400 rounded-lg text-sm font-medium hover:text-white transition-colors">Baixar Relatório</button>
+          <button onClick={() => navigate('/chamados/novo')} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors">Novo Chamado</button>
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        {[
-          { label: 'Total de Chamados', value: stats.total, icon: Ticket, color: 'text-zinc-400', bg: 'bg-zinc-900' },
-          { label: 'Em Aberto', value: stats.open, icon: AlertCircle, color: 'text-blue-500', bg: 'bg-blue-500/10' },
-          { label: 'Em Andamento', value: stats.ongoing, icon: Clock, color: 'text-amber-500', bg: 'bg-amber-500/10' },
-          { label: 'Finalizados', value: stats.completed, icon: CheckCircle2, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
-        ].map((item) => (
-          <div key={item.label} className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl relative overflow-hidden group">
-            <div className={`absolute top-0 right-0 p-3 ${item.bg} rounded-bl-2xl`}>
-              <item.icon className={`w-5 h-5 ${item.color}`} />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {statCards.map((card) => (
+          <div key={card.label} className="bg-zinc-900/50 border border-zinc-800 p-6 rounded-2xl">
+            <div className="flex justify-between items-start mb-4">
+              <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">{card.label}</span>
+              <card.icon className={`w-5 h-5 text-${card.color}-500`} />
             </div>
-            <p className="text-xs font-bold text-zinc-500 uppercase tracking-widest">{item.label}</p>
-            <h3 className="text-3xl font-bold mt-2">{item.value}</h3>
-            <div className="mt-4 flex items-center text-xs text-emerald-500 font-medium">
-              <TrendingUp className="w-3 h-3 mr-1" />
-              <span>+12% desde ontem</span>
-            </div>
+            <div className="text-3xl font-bold text-white mb-1">{card.value}</div>
+            <div className={`text-[10px] text-${card.color}-500/80 font-medium`}>↗ {card.trend}</div>
           </div>
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Chart */}
-        <div className="lg:col-span-2 bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
-          <h3 className="font-bold mb-6 flex items-center">
-            Distribuição de Chamados
-          </h3>
-          <div className="h-[300px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#71717a', fontSize: 12}} />
-                <YAxis axisLine={false} tickLine={false} tick={{fill: '#71717a', fontSize: 12}} />
-                <Tooltip 
-                  cursor={{fill: '#18181b'}}
-                  contentStyle={{backgroundColor: '#09090b', borderColor: '#27272a', borderRadius: '8px', color: '#fff'}}
-                />
-                <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                  {chartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 bg-zinc-900/50 border border-zinc-800 rounded-2xl p-6">
+          <h2 className="text-sm font-bold text-white mb-6 text-left">Distribuição de Chamados</h2>
+          <div className="h-64 flex items-end justify-between px-4">
+             {/* Simulação de gráfico simples para o dashboard */}
+             <div className="w-full h-full flex items-end gap-4">
+                <div className="flex-1 bg-blue-600/20 border-t-2 border-blue-600 rounded-t-lg" style={{height: `${(stats.open/stats.total)*100 || 10}%`}}></div>
+                <div className="flex-1 bg-yellow-600/20 border-t-2 border-yellow-600 rounded-t-lg" style={{height: `${(stats.progress/stats.total)*100 || 5}%`}}></div>
+                <div className="flex-1 bg-green-600/20 border-t-2 border-green-600 rounded-t-lg" style={{height: `${(stats.closed/stats.total)*100 || 5}%`}}></div>
+             </div>
           </div>
         </div>
 
-        {/* Recent Activity */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+        <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-6">
           <div className="flex items-center justify-between mb-6">
-            <h3 className="font-bold">Chamados Recentes</h3>
+            <h2 className="text-sm font-bold text-white text-left">Chamados Recentes</h2>
             <History className="w-4 h-4 text-zinc-500" />
           </div>
           <div className="space-y-4">
-            {recentTickets.length === 0 ? (
-              <p className="text-center text-zinc-500 py-10 text-sm italic">Nenhum chamado registrado.</p>
-            ) : (
-              recentTickets.map((ticket) => (
-                <div key={ticket.id} className="flex items-start space-x-3 p-3 rounded-lg hover:bg-zinc-800 transition-colors cursor-pointer group">
-                  <div className={`w-2 h-2 mt-1.5 rounded-full shrink-0 ${
-                    ticket.status === 'aberto' ? 'bg-blue-500' :
-                    ticket.status === 'finalizado' ? 'bg-emerald-500' : 'bg-amber-500'
-                  }`}></div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-zinc-200 truncate group-hover:text-blue-400 transition-colors">
-                      #{ticket.number} - {ticket.title}
-                    </p>
-                    <p className="text-xs text-zinc-500 mt-0.5">
-                      Aberto em {new Date(ticket.opened_at).toLocaleDateString()}
-                    </p>
-                  </div>
+            {recentTickets.map((ticket) => (
+              <div key={ticket.id} className="text-left group cursor-pointer" onClick={() => navigate(`/chamados/${ticket.id}`)}>
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="w-2 h-2 rounded-full bg-yellow-500"></div>
+                  <span className="text-sm font-medium text-zinc-200 group-hover:text-blue-400 transition-colors"># - {ticket.title}</span>
                 </div>
-              ))
-            )}
+                <p className="text-[10px] text-zinc-500 ml-4">Aberto em {formatDate(ticket.created_at)}</p>
+              </div>
+            ))}
+            <button onClick={() => navigate('/chamados')} className="w-full py-2 mt-4 border border-zinc-800 rounded-xl text-xs font-bold text-zinc-500 hover:bg-zinc-800 transition-colors">Ver Todos os Chamados</button>
           </div>
-          <button className="w-full mt-6 py-2.5 text-xs font-bold text-zinc-400 hover:text-white border border-zinc-800 rounded-lg hover:bg-zinc-800 transition-all">
-            Ver Todos os Chamados
-          </button>
         </div>
       </div>
     </div>
   );
-};
-
-export default Dashboard;
+}
