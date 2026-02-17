@@ -133,7 +133,16 @@ export default function TicketList() {
                       {ticket.priority}
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <button className="text-zinc-500 hover:text-white"><MoreHorizontal className="w-5 h-5" /></button>
+  <button 
+    onClick={(e) => {
+      e.stopPropagation(); // Evita clicar na linha e no botão ao mesmo tempo
+      navigate(`/chamados/${ticket.id}`);
+    }}
+    className="bg-zinc-800 hover:bg-zinc-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all border border-zinc-700"
+  >
+    Visualizar
+  </button>
+</td>
                     </td>
                   </tr>
                 ))
