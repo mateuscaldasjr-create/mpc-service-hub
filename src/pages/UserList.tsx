@@ -1,67 +1,82 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
 import { Profile } from '../types';
-import { UserPlus, Shield, User, Search, X, Loader2, Save } from 'lucide-react';
+import { UserPlus, Search, X, Loader2, Save, User, Shield, Mail, Lock } from 'lucide-react';
 
-interface UserListProps {
-  profile: Profile | null;
-}
-
-const UserList: React.FC<UserListProps> = ({ profile: adminProfile }) => {
+export default function UserList() {
   const [users, setUsers] = useState<Profile[]>([]);
   const [clients, setClients] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   
-  // Estados para o Modal de Edição
+  // Estados dos Modais
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<Profile | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+
+  // Form para Novo Usuário
+  const [newUser, setNewUser] = useState({
+    email: '',
+    password: '',
+    full_name: '',
+    role: 'cliente' as any,
+    client_id: ''
+  });
 
   useEffect(() => {
     fetchData();
   }, []);
 
-  const fetchData = async () => {
+  async function fetchData() {
     try {
       setLoading(true);
-      const [usersRes, clientsRes] = await Promise.all([
+      const [uRes, cRes] = await Promise.all([
         supabase.from('profiles').select('*').order('full_name'),
         supabase.from('clients').select('id, name').order('name')
       ]);
-      
-      if (usersRes.data) setUsers(usersRes.data);
-      if (clientsRes.data) setClients(clientsRes.data);
-    } catch (err) {
-      console.error(err);
+      setUsers(uRes.data || []);
+      setClients(cRes.data || []);
     } finally {
       setLoading(false);
     }
-  };
+  }
 
-  const handleUpdateUser = async (e: React.FormEvent) => {
+  // FUNÇÃO PARA ADICIONAR USUÁRIO
+  const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedUser) return;
-    
-    setSaving(true);
+    setActionLoading(true);
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ 
-          role: selectedUser.role,
-          client_id: selectedUser.role === 'cliente' ? selectedUser.client_id : null
-        })
-        .eq('id', selectedUser.id);
+      // 1. Cria o usuário no Auth
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: newUser.email,
+        password: newUser.password,
+        options: { data: { full_name: newUser.full_name } }
+      });
 
-      if (error) throw error;
-      
-      setIsModalOpen(false);
+      if (authError) throw authError;
+
+      // 2. O Profile é criado automaticamente pela nossa Trigger do banco, 
+      // então apenas atualizamos o cargo e vínculo se necessário
+      if (authData.user) {
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .update({ 
+            role: newUser.role,
+            client_id: newUser.role === 'cliente' ? newUser.client_id : null
+          })
+          .eq('id', authData.user.id);
+        
+        if (profileError) throw profileError;
+      }
+
+      alert('Usuário criado! Ele receberá um e-mail de confirmação.');
+      setIsAddModalOpen(false);
       fetchData();
-      alert('Permissões atualizadas com sucesso!');
     } catch (err: any) {
-      alert('Erro ao atualizar: ' + err.message);
+      alert('Erro ao criar: ' + err.message);
     } finally {
-      setSaving(false);
+      setActionLoading(false);
     }
   };
 
@@ -70,79 +85,77 @@ const UserList: React.FC<UserListProps> = ({ profile: adminProfile }) => {
     u.email?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const getRoleBadge = (role: string) => {
-    const styles: Record<string, string> = {
-      admin: 'bg-red-500/10 text-red-400 border-red-500/20',
-      tecnico: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
-      cliente: 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20',
-      fiscal: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
-    };
-    return (
-      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${styles[role] || styles.cliente}`}>
-        {role || 'Pendente'}
-      </span>
-    );
-  };
-
   return (
-    <div className="space-y-6 text-left">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="space-y-6 text-left pb-10">
+      {/* Header com Azul MPC */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white">Gestão de Acessos</h1>
-          <p className="text-zinc-500 text-sm">Configure quem pode acessar a plataforma da MPC.</p>
+          <h1 className="text-2xl font-black text-white uppercase tracking-tighter">Gestão de Acessos</h1>
+          <p className="text-zinc-500 text-sm font-medium">Controle de permissões da MPC Service Hub.</p>
         </div>
+        <button 
+          onClick={() => setIsAddModalOpen(true)}
+          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl font-black text-sm transition-all shadow-lg shadow-blue-600/20"
+        >
+          <UserPlus className="w-4 h-4" /> Novo Usuário
+        </button>
       </div>
 
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
-        <div className="p-4 bg-zinc-900/50 border-b border-zinc-800">
-           <div className="relative w-full md:w-96">
+      {/* Lista de Usuários */}
+      <div className="bg-zinc-900/40 border border-zinc-800/50 rounded-3xl overflow-hidden shadow-2xl">
+        <div className="p-6 border-b border-zinc-800/50">
+          <div className="relative max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
             <input 
-              type="text" 
-              placeholder="Buscar por nome ou e-mail..." 
-              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg pl-10 pr-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              type="text" placeholder="Buscar por nome ou e-mail..." 
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white focus:border-blue-500 outline-none transition-all"
+              value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left">
+          <table className="w-full">
             <thead>
-              <tr className="border-b border-zinc-800 bg-zinc-900/30">
-                <th className="px-6 py-4 text-[10px] uppercase font-bold text-zinc-500 tracking-widest">Usuário</th>
-                <th className="px-6 py-4 text-[10px] uppercase font-bold text-zinc-500 tracking-widest">Nível de Acesso</th>
-                <th className="px-6 py-4 text-[10px] uppercase font-bold text-zinc-500 tracking-widest">Empresa Vinculada</th>
-                <th className="px-6 py-4"></th>
+              <tr className="text-[10px] font-black text-zinc-500 uppercase tracking-widest border-b border-zinc-800/50">
+                <th className="px-6 py-4">Usuário</th>
+                <th className="px-6 py-4">Nível</th>
+                <th className="px-6 py-4">Empresa</th>
+                <th className="px-6 py-4 text-right">Ação</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-800">
+            <tbody className="divide-y divide-zinc-800/50">
               {loading ? (
-                <tr><td colSpan={4} className="px-6 py-12 text-center text-zinc-500">Sincronizando base de usuários...</td></tr>
-              ) : filteredUsers.map((u) => (
-                <tr key={u.id} className="hover:bg-zinc-800/30 transition-colors">
+                <tr><td colSpan={4} className="py-20 text-center text-zinc-500 font-bold uppercase text-xs animate-pulse">Sincronizando...</td></tr>
+              ) : filteredUsers.map(u => (
+                <tr key={u.id} className="hover:bg-zinc-800/20 transition-colors group">
                   <td className="px-6 py-4">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-9 h-9 bg-zinc-800 rounded-full flex items-center justify-center text-zinc-500 border border-zinc-700">
-                        <User className="w-4 h-4" />
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-zinc-800 rounded-full flex items-center justify-center border border-zinc-700 group-hover:border-blue-500/50 transition-colors">
+                        <User className="w-5 h-5 text-zinc-500" />
                       </div>
                       <div>
-                        <p className="text-sm font-bold text-zinc-100">{u.full_name || 'Usuário Novo'}</p>
-                        <p className="text-xs text-zinc-500">{u.email}</p>
+                        <p className="text-sm font-bold text-white">{u.full_name || 'Novo Usuário'}</p>
+                        <p className="text-[10px] text-zinc-500 font-mono">{u.email}</p>
                       </div>
                     </div>
                   </td>
-                  <td className="px-6 py-4">{getRoleBadge(u.role)}</td>
-                  <td className="px-6 py-4 text-xs text-zinc-400">
-                    {u.role === 'cliente' ? (clients.find(c => c.id === u.client_id)?.name || 'Nenhum vínculo') : 'Acesso Interno'}
+                  <td className="px-6 py-4">
+                    <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase border ${
+                      u.role === 'admin' ? 'border-blue-600/30 text-blue-500 bg-blue-500/5' : 'border-zinc-700 text-zinc-500'
+                    }`}>
+                      {u.role}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-[11px] font-bold text-zinc-400">
+                    {u.role === 'cliente' ? (clients.find(c => c.id === u.client_id)?.name || 'Sem vínculo') : 'MPC Interno'}
                   </td>
                   <td className="px-6 py-4 text-right">
                     <button 
-                      onClick={() => { setSelectedUser(u); setIsModalOpen(true); }}
-                      className="text-xs font-bold text-blue-500 hover:text-blue-400 transition-colors"
+                      onClick={() => { setSelectedUser(u); setIsEditModalOpen(true); }}
+                      className="text-[10px] font-black text-blue-500 hover:text-white uppercase transition-colors"
                     >
-                      Editar Acesso
+                      Editar
                     </button>
                   </td>
                 </tr>
@@ -152,65 +165,16 @@ const UserList: React.FC<UserListProps> = ({ profile: adminProfile }) => {
         </div>
       </div>
 
-      {/* MODAL DE EDIÇÃO DE USUÁRIO */}
-      {isModalOpen && selectedUser && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md p-6 shadow-2xl">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-bold text-white">Configurar Acesso</h2>
-              <button onClick={() => setIsModalOpen(false)} className="text-zinc-500 hover:text-white"><X /></button>
-            </div>
-            
-            <div className="mb-6 p-4 bg-zinc-800/50 rounded-xl border border-zinc-800">
-              <p className="text-sm font-bold text-white">{selectedUser.full_name}</p>
-              <p className="text-xs text-zinc-500">{selectedUser.email}</p>
+      {/* MODAL ADICIONAR (AZUL MPC) */}
+      {isAddModalOpen && (
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-50 p-4 text-left">
+          <div className="bg-zinc-950 border border-zinc-800 rounded-3xl w-full max-w-md p-8 shadow-2xl relative overflow-hidden">
+            <div className="absolute top-0 left-0 right-0 h-1 bg-blue-600" />
+            <div className="flex justify-between items-center mb-8">
+              <h2 className="text-xl font-black text-white uppercase tracking-tight">Novo Acesso</h2>
+              <button onClick={() => setIsAddModalOpen(false)} className="text-zinc-600 hover:text-white"><X /></button>
             </div>
 
-            <form onSubmit={handleUpdateUser} className="space-y-4">
-              <div>
-                <label className="text-xs font-bold text-zinc-500 uppercase">Nível de Permissão</label>
-                <select 
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-white mt-1 outline-none focus:border-blue-500"
-                  value={selectedUser.role}
-                  onChange={(e) => setSelectedUser({...selectedUser, role: e.target.value as any})}
-                >
-                  <option value="admin">Administrador (Mateus/Sócios)</option>
-                  <option value="tecnico">Técnico de Campo</option>
-                  <option value="cliente">Cliente (Visualização limitada)</option>
-                  <option value="fiscal">Fiscal (Relatórios)</option>
-                </select>
-              </div>
-
-              {selectedUser.role === 'cliente' && (
-                <div>
-                  <label className="text-xs font-bold text-zinc-500 uppercase">Vincular a qual Cliente?</label>
-                  <select 
-                    required
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-white mt-1 outline-none focus:border-blue-500"
-                    value={selectedUser.client_id || ''}
-                    onChange={(e) => setSelectedUser({...selectedUser, client_id: e.target.value})}
-                  >
-                    <option value="">Selecione a Empresa</option>
-                    {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                  <p className="text-[10px] text-zinc-500 mt-2 italic">O usuário só verá chamados e equipamentos desta empresa.</p>
-                </div>
-              )}
-
-              <button 
-                type="submit" 
-                disabled={saving}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold mt-4 flex items-center justify-center gap-2 transition-all"
-              >
-                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                Salvar Alterações
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-export default UserList;
+            <form onSubmit={handleAddUser} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-[10px
